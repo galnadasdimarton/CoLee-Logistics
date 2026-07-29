@@ -199,6 +199,8 @@ const FIREBASE_URL = "https://co-lee-logistics-default-rtdb.europe-west1.firebas
 <div class="wrap" id="wrap"></div>
 
 <script>
+const PICKER_NAMES = { marci:"Marci", kolos:"Ábel", klausz:"Dani", blaize:"Sáry" };
+
 function renderPicker(){
   const wrap = document.getElementById('wrap');
   const names = Object.keys(DATA);
@@ -206,7 +208,7 @@ function renderPicker(){
     <div id="picker">
       <h1>Ki vagy?</h1>
       <p>Válaszd ki a neved a napi itinered megtekintéséhez.</p>
-      ${names.map(k => `<button class="name-btn" data-key="${k}">${DATA[k].driver}</button>`).join('')}
+      ${names.map(k => `<button class="name-btn" data-key="${k}">${PICKER_NAMES[k] || DATA[k].driver}</button>`).join('')}
     </div>
   `;
   wrap.querySelectorAll('.name-btn').forEach(btn=>{
@@ -306,7 +308,7 @@ async function renderSheet(key){
 
   wrap.innerHTML = `
     <div class="switch-row">
-      <button id="switchBtn">Nem ${base.driver} vagy? Válts sofőrt</button>
+      <button id="switchBtn">Nem ${PICKER_NAMES[key] || base.driver} vagy? Válts sofőrt</button>
       <span id="saveStatus" style="float:right;color:var(--text-dim);font-size:12px;"></span>
     </div>
     <div class="head">
@@ -315,7 +317,7 @@ async function renderSheet(key){
       <div class="sub"><span contenteditable="true">${d.date}</span></div>
     </div>
     <div class="meta">
-      <div class="cell"><label>Sofőr</label><div contenteditable="true">${d.driver}</div></div>
+      <div class="cell"><label>Sofőr</label><div contenteditable="true">${PICKER_NAMES[key] || d.driver}</div></div>
       <div class="cell"><label>Jármű</label><div contenteditable="true">${d.vehicle}</div></div>
     </div>
     <h2>Menetrend</h2>
