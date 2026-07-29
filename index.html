@@ -76,6 +76,10 @@
   .meta div[contenteditable]{font-size:15px;font-weight:600;outline:none;}
 
   h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);margin:20px 16px 8px;}
+  h2.collapsible{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;}
+  h2.collapsible .chevron{display:inline-block;font-size:9px;transition:transform .15s;}
+  h2.collapsible.collapsed .chevron{transform:rotate(-90deg);}
+  .section-body.collapsed{display:none;}
 
   .route{margin:0 16px;position:relative;padding-left:16px;}
   .route::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:var(--line);}
@@ -92,7 +96,11 @@
 
   .load{margin:0 16px;}
   .load-group{background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:8px;position:relative;}
-  .load-group .gname{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-dim);margin-bottom:6px;outline:none;}
+  .load-group .ghead{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;margin-bottom:6px;}
+  .load-group .ghead .chevron{display:inline-block;font-size:9px;color:var(--text-dim);transition:transform .15s;flex:none;}
+  .load-group.collapsed .ghead .chevron{transform:rotate(-90deg);}
+  .load-group .gname{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-dim);margin-bottom:0;outline:none;flex:1;}
+  .load-group.collapsed .item,.load-group.collapsed .add-item{display:none;}
   .load-group .del{position:absolute;right:8px;top:8px;}
   .item{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-top:1px solid var(--card-2);font-size:14.5px;}
   .item:first-of-type{border-top:none;}
@@ -114,6 +122,11 @@
   .toolbar button{flex:1;background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;}
   .toolbar button:active{background:var(--card-2);}
 
+  body.locked .del,
+  body.locked .add-stop,
+  body.locked .add-item,
+  body.locked .add-group{display:none;}
+
   @media print{
     body{background:#fff;color:#000;}
     .toolbar,.switch-row{display:none;}
@@ -123,6 +136,10 @@
     .meta .cell:first-child{border-right-color:#ddd;}
     .load-group,.issues{background:#f4f4f4 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .add-stop,.add-item,.del{display:none;}
+    .section-body.collapsed{display:block;}
+    .load-group.collapsed .item,.load-group.collapsed .add-item{display:flex;}
+    .load-group.collapsed .add-item{display:block;}
+    h2.collapsible .chevron{display:none;}
   }
 </style>
 </head>
@@ -144,6 +161,9 @@ const DATA = {
       {time:"15:40", place:"Kolos pickup + rack!", addr:"Nagyszombat 1/c"},
       {time:"16:00", place:"Batyi indulás", addr:"Batthyányi tér"},
       {time:"18:30", place:"Érkezés a házba", addr:"Bükfürdő Farkas Csaba +36709026395"}
+    ],
+    returnStops: [
+      {time:"00:00", place:"Megálló", addr:"Cím"}
     ],
     loadGroups: [
       {name:"Backline", items:[
@@ -172,6 +192,7 @@ const DATA = {
     date: "[dátum]",
     vehicle: "[jármű]",
     stops: [ {time:"00:00", place:"Megálló", addr:"Cím"} ],
+    returnStops: [ {time:"00:00", place:"Megálló", addr:"Cím"} ],
     loadGroups: [ {name:"Backline", items:[ {text:"Tétel", checked:false} ]} ]
   },
   klausz: {
@@ -180,6 +201,7 @@ const DATA = {
     date: "[dátum]",
     vehicle: "[jármű]",
     stops: [ {time:"00:00", place:"Megálló", addr:"Cím"} ],
+    returnStops: [ {time:"00:00", place:"Megálló", addr:"Cím"} ],
     loadGroups: [ {name:"Backline", items:[ {text:"Tétel", checked:false} ]} ]
   },
   blaize: {
@@ -188,6 +210,7 @@ const DATA = {
     date: "[dátum]",
     vehicle: "[jármű]",
     stops: [ {time:"00:00", place:"Megálló", addr:"Cím"} ],
+    returnStops: [ {time:"00:00", place:"Megálló", addr:"Cím"} ],
     loadGroups: [ {name:"Backline", items:[ {text:"Tétel", checked:false} ]} ]
   }
 };
@@ -254,6 +277,11 @@ function captureState(){
     place: stopEl.querySelector('.place').textContent.trim(),
     addr: stopEl.querySelector('.addr').textContent.trim()
   }));
+  const returnStops = Array.from(wrap.querySelectorAll('#routeBack .stop')).map(stopEl => ({
+    time: stopEl.querySelector('.time').textContent.trim(),
+    place: stopEl.querySelector('.place').textContent.trim(),
+    addr: stopEl.querySelector('.addr').textContent.trim()
+  }));
   const loadGroups = Array.from(wrap.querySelectorAll('#load .load-group')).map(groupEl => ({
     name: groupEl.querySelector('.gname').textContent.trim(),
     items: Array.from(groupEl.querySelectorAll('.item')).map(itemEl => ({
@@ -263,7 +291,7 @@ function captureState(){
   }));
   const issuesEl = wrap.querySelector('.issues div[contenteditable]');
   const issues = issuesEl ? issuesEl.textContent.trim() : '';
-  return { driver, tour, date, vehicle, stops, loadGroups, issues };
+  return { driver, tour, date, vehicle, stops, returnStops, loadGroups, issues };
 }
 
 function setSaveStatus(text){
@@ -306,9 +334,12 @@ async function renderSheet(key){
   const savedState = await loadState(key);
   const d = savedState || base;
 
+  document.body.classList.add('locked');
+
   wrap.innerHTML = `
     <div class="switch-row">
       <button id="switchBtn">Nem ${PICKER_NAMES[key] || base.driver} vagy? Válts sofőrt</button>
+      <button id="lockToggle" onclick="toggleLock()">🔓 Szerkesztés</button>
       <span id="saveStatus" style="float:right;color:var(--text-dim);font-size:12px;"></span>
     </div>
     <div class="head">
@@ -320,11 +351,20 @@ async function renderSheet(key){
       <div class="cell"><label>Sofőr</label><div contenteditable="true">${PICKER_NAMES[key] || d.driver}</div></div>
       <div class="cell"><label>Jármű</label><div contenteditable="true">${d.vehicle}</div></div>
     </div>
-    <h2>Menetrend</h2>
-    <div class="route" id="route">
-      ${d.stops.map(s => stopHtml(s)).join('')}
+    <h2 class="collapsible" onclick="toggleSection(this)"><span class="chevron">▾</span>Odaút - Menetrend</h2>
+    <div class="section-body">
+      <div class="route" id="route">
+        ${d.stops.map(s => stopHtml(s)).join('')}
+      </div>
+      <button class="add-stop" onclick="addStop('route')">+ új megálló</button>
     </div>
-    <button class="add-stop" onclick="addStop()">+ új megálló</button>
+    <h2 class="collapsible" onclick="toggleSection(this)"><span class="chevron">▾</span>Visszaút - Menetrend</h2>
+    <div class="section-body">
+      <div class="route" id="routeBack">
+        ${(d.returnStops || []).map(s => stopHtml(s)).join('')}
+      </div>
+      <button class="add-stop" onclick="addStop('routeBack')">+ új megálló</button>
+    </div>
     <h2>Rakomány / Emberkék</h2>
     <div class="load" id="load">
       ${d.loadGroups.map(g => groupHtml(g)).join('')}
@@ -335,7 +375,7 @@ async function renderSheet(key){
     </div>
     <div class="toolbar">
       <button onclick="window.print()">Nyomtatás / PDF mentése</button>
-      <button onclick="addGroup()">+ új rakomány csoport</button>
+      <button class="add-group" onclick="addGroup()">+ új rakomány csoport</button>
     </div>
   `;
   document.getElementById('switchBtn').addEventListener('click', ()=>{
@@ -365,15 +405,26 @@ function itemHtml(it){
 }
 function groupHtml(g){
   return `<div class="load-group">
-    <div class="gname" contenteditable="true">${g.name}</div>
+    <div class="ghead" onclick="toggleGroup(this)"><span class="chevron">▾</span><div class="gname" contenteditable="true" onclick="event.stopPropagation()">${g.name}</div></div>
     <button class="del" onclick="removeEl(this)" aria-label="csoport törlése">×</button>
     ${g.items.map(itemHtml).join('')}
     <button class="add-item" onclick="addItem(this)">+ új tétel</button>
   </div>`;
 }
+function toggleSection(h2){
+  h2.classList.toggle('collapsed');
+  h2.nextElementSibling.classList.toggle('collapsed');
+}
+function toggleGroup(ghead){
+  ghead.closest('.load-group').classList.toggle('collapsed');
+}
+function toggleLock(){
+  const locked = document.body.classList.toggle('locked');
+  document.getElementById('lockToggle').textContent = locked ? '🔓 Szerkesztés' : '🔒 Kész';
+}
 
-function addStop(){
-  const route = document.getElementById('route');
+function addStop(targetId){
+  const route = document.getElementById(targetId || 'route');
   const stop = document.createElement('div');
   stop.className = 'stop';
   stop.innerHTML = '<div class="row1"><div class="time" contenteditable="true">00:00</div><div class="place" contenteditable="true">Új megálló</div><button class="del" onclick="removeEl(this)" aria-label="törlés">×</button></div><div class="addr" contenteditable="true">Cím</div>';
@@ -391,7 +442,7 @@ function addGroup(){
   const load = document.getElementById('load');
   const group = document.createElement('div');
   group.className = 'load-group';
-  group.innerHTML = '<div class="gname" contenteditable="true">Új csoport</div><button class="del" onclick="removeEl(this)" aria-label="csoport törlése">×</button><button class="add-item" onclick="addItem(this)">+ új tétel</button>';
+  group.innerHTML = '<div class="ghead" onclick="toggleGroup(this)"><span class="chevron">▾</span><div class="gname" contenteditable="true" onclick="event.stopPropagation()">Új csoport</div></div><button class="del" onclick="removeEl(this)" aria-label="csoport törlése">×</button><button class="add-item" onclick="addItem(this)">+ új tétel</button>';
   load.appendChild(group);
   scheduleSave();
 }
